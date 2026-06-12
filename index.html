@@ -10,6 +10,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <!-- Google Identity Services -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- CodeMirror CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/atom.min.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -246,15 +249,32 @@
   .no-files { padding: 12px 8px; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); text-align: center; }
   .file-hint { padding: 6px 10px 8px; font-family: var(--mono); font-size: 0.6rem; color: var(--muted); border-top: 1px solid var(--border); flex-shrink: 0; line-height: 1.6; }
 
-  /* ── EDITOR ── */
+  /* ── EDITOR PANE WITH CODEMIRROR ── */
   .editor-pane { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
 
-  textarea {
-    flex: 1; background: #fff; color: var(--text);
-    font-family: var(--mono); font-size: 0.8rem; line-height: 1.75;
-    padding: 18px; border: none; outline: none; resize: none; tab-size: 2;
+  #editor { 
+    flex: 1; 
+    font-family: var(--mono) !important;
+    font-size: 0.8rem !important;
   }
-  textarea::selection { background: #bfdbfe; }
+
+  .CodeMirror {
+    height: 100% !important;
+    background: #fff !important;
+    color: var(--text) !important;
+    font-family: var(--mono) !important;
+    font-size: 0.8rem !important;
+    line-height: 1.75 !important;
+  }
+
+  .CodeMirror-linenumber {
+    color: var(--muted) !important;
+  }
+
+  .CodeMirror-gutters {
+    background: var(--surface) !important;
+    border-right: 1px solid var(--border) !important;
+  }
 
   /* ── PREVIEW ── */
   .preview-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
@@ -392,7 +412,7 @@
     <div class="file-hint">Click file &#8594; load in editor<br>&#10005; &#8594; remove &nbsp;|&nbsp; drag anywhere to upload</div>
   </div>
 
-  <!-- EDITOR -->
+  <!-- EDITOR WITH CODEMIRROR -->
   <div class="editor-pane">
     <div class="pane-header">
       <span id="editorLabel">editor &#8212; doc.tex</span>
@@ -425,6 +445,10 @@
 
 </div>
 
+<!-- CodeMirror JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/stex/stex.min.js"></script>
+
 <script>
 // ── CONFIG ────────────────────────────────────────────
 // Replace with your Google OAuth Client ID to enable sign-in
@@ -442,7 +466,7 @@ let filesPanelOpen = true;
 let googleUser  = null;
 
 // ── DOM ───────────────────────────────────────────────
-const editor         = document.getElementById('editor');
+const editorTextarea  = document.getElementById('editor');
 const preview        = document.getElementById('preview');
 const logBox         = document.getElementById('logBox');
 const logToolbar     = document.getElementById('logToolbar');
@@ -468,16 +492,32 @@ const googleBtn      = document.getElementById('googleBtn');
 const googleAvatar   = document.getElementById('googleAvatar');
 const googleDropdown = document.getElementById('googleDropdown');
 
+// ── Initialize CodeMirror ─────────────────────────────
+const editor = CodeMirror.fromTextArea(editorTextarea, {
+  mode: 'stex',
+  theme: 'atom',
+  lineNumbers: true,
+  lineWrapping: true,
+  indentUnit: 2,
+  tabSize: 2,
+  indentWithTabs: false,
+  matchBrackets: true,
+  autoCloseBrackets: true,
+  styleActiveLine: true,
+  highlightSelectionMatches: { showToken: /\w/, annotateScrollbar: true }
+});
+
 // ── collapse ──────────────────────────────────────────
 function toggleFilePanel() {
   filesPanelOpen = !filesPanelOpen;
   workspace.classList.toggle('files-collapsed', !filesPanelOpen);
   collapseBtn.innerHTML = filesPanelOpen ? '&#9664;' : '&#9654;';
   collapseBtn.title = filesPanelOpen ? 'Collapse file panel' : 'Expand file panel';
+  editor.refresh();
 }
 
 // ── default template ──────────────────────────────────
-editor.value = `\\documentclass{article}
+editor.setValue(`\\documentclass{article}
 
 \\usepackage{algorithm}
 \\usepackage{algpseudocode}
@@ -496,28 +536,29 @@ editor.value = `\\documentclass{article}
 \\end{algorithmic}
 \\end{algorithm}
 
-\\end{document}`;
+\\end{document}`);
 updateLineCount();
 
 // ── editor events ─────────────────────────────────────
-editor.addEventListener('input', () => {
+editor.on('change', () => {
   updateLineCount();
   if (activeFile && uploadedFiles[activeFile])
-    uploadedFiles[activeFile].content = editor.value;
+    uploadedFiles[activeFile].content = editor.getValue();
 });
 
-editor.addEventListener('keydown', e => {
-  if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); compile(); }
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    const s = editor.selectionStart;
-    editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(editor.selectionEnd);
-    editor.selectionStart = editor.selectionEnd = s + 2;
+editor.setOption('extraKeys', {
+  'Ctrl-Enter': compile,
+  'Tab': function(cm) {
+    if (cm.somethingSelected()) {
+      cm.indentSelection('add');
+    } else {
+      cm.replaceSelection('  ');
+    }
   }
 });
 
 function updateLineCount() {
-  lineCount.textContent = editor.value.split('\n').length + ' lines';
+  lineCount.textContent = editor.lineCount() + ' lines';
 }
 
 // ── file upload ───────────────────────────────────────
@@ -557,9 +598,9 @@ function loadFileInEditor(name) {
   if (!entry) return;
   if (entry.content === null) { alert(`"${name}" is a binary file and cannot be edited as text.`); return; }
   if (activeFile && uploadedFiles[activeFile])
-    uploadedFiles[activeFile].content = editor.value;
+    uploadedFiles[activeFile].content = editor.getValue();
   activeFile = name;
-  editor.value = entry.content;
+  editor.setValue(entry.content);
   editorLabel.textContent = 'editor \u2014 ' + name;
   updateLineCount();
   renderFileList();
@@ -601,9 +642,9 @@ function updateZipBtn() {
 // ── compile ───────────────────────────────────────────
 async function compile() {
   if (activeFile && uploadedFiles[activeFile])
-    uploadedFiles[activeFile].content = editor.value;
+    uploadedFiles[activeFile].content = editor.getValue();
 
-  const source = editor.value.trim();
+  const source = editor.getValue().trim();
   if (!source) return;
 
   compileBtn.disabled = true;
@@ -725,7 +766,7 @@ downloadZipBtn.addEventListener('click', async () => {
 
   // Main editor source
   const mainName = mainNameEl.value || 'doc.tex';
-  zip.file(mainName, editor.value);
+  zip.file(mainName, editor.getValue());
 
   // Uploaded support files
   for (const [name, entry] of Object.entries(uploadedFiles)) {
@@ -781,11 +822,11 @@ function renderGoogleDropdown() {
         </div>
       </div>
       <div class="g-dropdown-item" onclick="saveToAccount()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0[...]
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         Save current project
       </div>
       <div class="g-dropdown-item" onclick="signOutGoogle()" style="border-top:1px solid var(--border)">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline poin[...]
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Sign out
       </div>
     `;
