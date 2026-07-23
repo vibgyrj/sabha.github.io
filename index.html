@@ -507,14 +507,17 @@ const editor = CodeMirror.fromTextArea(editorTextarea, {
   highlightSelectionMatches: { showToken: /\w/, annotateScrollbar: true }
 });
 
-// ── collapse ──────────────────────────────────────────
+// Ensure your initial variable matches the hidden state
+let filesPanelOpen = false; 
+
 function toggleFilePanel() {
   filesPanelOpen = !filesPanelOpen;
   workspace.classList.toggle('files-collapsed', !filesPanelOpen);
-  collapseBtn.innerHTML = filesPanelOpen ? '&#9664;' : '&#9654;';
+  collapseBtn.innerHTML = filesPanelOpen ? '◀' : '▶';
   collapseBtn.title = filesPanelOpen ? 'Collapse file panel' : 'Expand file panel';
   editor.refresh();
 }
+
 
 // ── default template ──────────────────────────────────
 editor.setValue(`\\documentclass{article}
